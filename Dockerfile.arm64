@@ -1,0 +1,30 @@
+FROM debian:buster AS build
+
+WORKDIR /src
+
+ARG TOR=tor-0.4.6.7
+ARG HASH=31728f4ad386042d3088f015e28f15d91ae3e283
+ARG HOST=aarch64
+ARG ARCH=arm64
+
+RUN dpkg --add-architecture $ARCH && apt-get update && apt-get install git automake \
+    autoconf build-essential pkg-config libevent-dev:$ARCH libssl-dev:$ARCH \
+    zlib1g-dev:$ARCH liblzma-dev:$ARCH libzstd-dev:$ARCH gcc-${HOST}-linux-gnu \
+    binutils-${HOST}-linux-gnu -y
+
+RUN set -ex \
+    && git clone https://github.com/torproject/tor.git --depth 1 -b ${TOR} \
+    && cd tor \
+    && test `git rev-parse HEAD` = ${HASH} || exit 1 \
+    && ./autogen.sh \
+    && ./configure --host ${HOST}-linux-gnu --prefix=/tor --enable-lzma \
+    --enable-zstd --disable-tool-name-check --disable-asciidoc --disable-manpage \
+    --disable-html-manual \
+    && make -j4 \
+    && make install
+
+FROM tor-base-image:arm64
+
+COPY --chown=65532:65532 --from=build /tor /tor
+WORKDIR /tor/bin
+ENTRYPOINT ["./tor"]
